@@ -1,0 +1,50 @@
+kind: pipeline
+type: docker
+name: kubeimooc-web-publish
+
+environment:
+  GOOS: linux
+  GOARCH: amd64
+
+steps:
+  - name: build
+    image: plugins/docker
+    volumes:
+      - name: hosts
+        path: /etc/hosts
+      - name: docker-ca
+        path: /etc/docker
+      - name: dockersock
+        path: /var/run/docker.sock
+    settings:
+      username: admin
+      password:
+        from_secret: harbor_password
+      repo: harbor.kubeimooc/kubeimooc/kubeimooc-web
+      registry: harbor.kubeimooc.com
+      tags:
+        - v1.4
+  - name: ssh commands
+    image: appleboy/drone-ssh
+    settings:
+      host: 192.168.1.19
+      username: root
+      password:
+        from_secret: ssh_password
+      port: 22
+      script:
+        #拉取镜像并重启 注意--需要提前在目标主机完成docker login
+        - if [ $(docker ps -a | grep kubeimooc-web | wc -l) -ge 1 ];then docker stop kubeimooc-web && docker rm kubeimooc-web; fi
+        - docker pull harbor.kubeimooc/kubeimooc/kubeimooc-web:v1.4
+        - export BACKEND_HOST=http://192.168.1.19:8082/
+        - docker run --name kubeimooc-web --restart=always -d -p8081:80 -e BACKEND_HOST=$BACKEND_HOST harbor.kubeimooc/kubeimooc/kubeimooc-web:v1.4
+volumes:
+  - name: hosts
+    host:
+      path: /etc/hosts
+  - name: docker-ca
+    host:
+      path: /etc/docker
+  - name: dockersock
+    host:
+      path: /var/run/docker.sock
